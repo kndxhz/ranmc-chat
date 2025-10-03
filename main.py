@@ -62,8 +62,7 @@ def init_db():
             user_alias VARCHAR(255) NOT NULL,
             msg TEXT NOT NULL,
             attribute TEXT,
-            send_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            type VARCHAR(50) NOT NULL
+            send_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """
     )
@@ -74,10 +73,36 @@ def main():
     init_db()
 
 
+def save_message(username, user_alias, msg, attribute):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO messages (username, user_alias, msg, attribute)
+        VALUES (%s, %s, %s, %s)
+    """,
+        (username, user_alias, msg, attribute),
+    )
+    conn.commit()
+
+
 @app.route("/add", methods=["POST"])
 def add():
     data = request.get_data(as_text=True)
-    print(data)
+    data_list = data.split("\r\n")
+    print(data_list)
+    # ['[弦月柚子] <youzi> 展示物品[14伤]', '[装备强化] 6 / 6', '物理伤害: 2', '真实伤害: 4', '真实伤害: 3', '流血几率: 3', '物理伤害: 5', '虚弱几率: 4']
+
+    match = re.search(r"\[(.*?)\] <(.*?)>(.*)", data_list[0])
+    user_alias = match.group(1) if match else ""
+    username = match.group(2) if match else ""
+    msg = match.group(3).strip() if match else ""
+    attribute = "|".join(data_list[1:]) if len(data_list) > 1 else ""
+    send_time = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())
+    print(
+        f"头衔: {user_alias}, 用户名: {username}, 消息: {msg}, 属性: {attribute}, 发送时间: {send_time}"
+    )
+    save_message(username, user_alias, msg, attribute)
 
     return {"status": "ok"}, 200
 
@@ -86,6 +111,8 @@ if __name__ == "__main__":
     try:
         main()
         app.run(debug=True)
+    except SystemExit:
+        print("系统退出")
     except KeyboardInterrupt:
         print("正在退出...")
     except Exception as e:
