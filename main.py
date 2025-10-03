@@ -86,6 +86,67 @@ def save_message(username, user_alias, msg, attribute):
     conn.commit()
 
 
+@app.route("/")
+def index():
+    return "<a href='https://github.com/kndxhz/ranmc-chat'>本项目已在github开源,没必要试探了</a>"
+
+
+@app.route("/getdata")
+def getdata():
+    username = request.args.get("id", "")
+    msg_pattern = request.args.get("filter", "")
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM messages"
+    params = []
+    conditions = []
+
+    if username:
+        conditions.append("username = %s")
+        params.append(username)
+    if start_date:
+        conditions.append("UNIX_TIMESTAMP(send_time) >= %s")
+        params.append(int(start_date))
+    if end_date:
+        conditions.append("UNIX_TIMESTAMP(send_time) <= %s")
+        params.append(int(end_date))
+    if msg_pattern:
+        conditions.append("msg REGEXP %s")
+        params.append(msg_pattern)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    print(query, params)
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    result = [
+        {
+            "username": row[1],
+            "user_alias": row[2],
+            "message": row[3],
+            "attribute": row[4] if row[4] else "",
+            "send_time": row[5].timestamp(),
+        }
+        for row in rows
+    ]
+
+    return jsonify({"status": "ok", "chats": result}), 200
+
+
+@app.route("/getid")
+def getid():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT username FROM messages;")
+    usernames = [row[0] for row in cursor.fetchall()]
+    return {"status": "ok", "ids": usernames}, 200
+
+
 @app.route("/add", methods=["POST"])
 def add():
     data = request.get_data(as_text=True)
