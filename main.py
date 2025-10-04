@@ -39,7 +39,14 @@ db_conn = None
 
 def get_db():
     global db_conn
-    if db_conn is None:
+    try:
+        if db_conn is None:
+            db_conn = pymysql.connect(**MYSQL_CONFIG)
+        else:
+            # 检查连接是否有效
+            db_conn.ping(reconnect=True)
+    except:
+        # 连接失效,重新创建
         db_conn = pymysql.connect(**MYSQL_CONFIG)
     return db_conn
 
@@ -74,13 +81,39 @@ def init_db():
     conn.commit()
 
 
+def init_variables():
+    global players, tps, tps_1, tps_5, tps_15
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT players, tps, tps_1, tps_5, tps_15 FROM messages ORDER BY id DESC LIMIT 1;"
+    )
+    row = cursor.fetchone()
+    if row:
+        players = row[0].split(", ") if row[0] else []
+        tps = row[1] if row[1] else 20.0
+        tps_1 = row[2] if row[2] else 20.0
+        tps_5 = row[3] if row[3] else 20.0
+        tps_15 = row[4] if row[4] else 20.0
+
+
 def main():
     init_db()
+    init_variables()
 
 
 def save_message(
-    username, user_alias, msg, attribute, players, tps, tps_1, tps_5, tps_15
+    username,
+    user_alias,
+    msg,
+    attribute,
+    players,
+    tps,
+    tps_1,
+    tps_5,
+    tps_15,
 ):
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
@@ -103,7 +136,7 @@ def save_message(
     conn.commit()
 
 
-@app.route("/")
+@app.route("//")
 def index():
     return "<a href='https://github.com/kndxhz/ranmc-chat'>本项目已在github开源,没必要试探了</a>"
 
@@ -115,61 +148,69 @@ def getdata():
     start_date = request.args.get("start_date", "")
     end_date = request.args.get("end_date", "")
 
-    conn = get_db()
-    cursor = conn.cursor()
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
 
-    query = "SELECT * FROM messages"
-    params = []
-    conditions = []
+        query = "SELECT * FROM messages"
+        params = []
+        conditions = []
 
-    if username:
-        conditions.append("username = %s")
-        params.append(username)
-    if start_date:
-        conditions.append("UNIX_TIMESTAMP(send_time) >= %s")
-        params.append(int(start_date))
-    if end_date:
-        conditions.append("UNIX_TIMESTAMP(send_time) <= %s")
-        params.append(int(end_date))
-    if msg_pattern:
-        conditions.append("msg REGEXP %s")
-        params.append(msg_pattern)
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
+        if username:
+            conditions.append("username = %s")
+            params.append(username)
+        if start_date:
+            conditions.append("UNIX_TIMESTAMP(send_time) >= %s")
+            params.append(int(start_date))
+        if end_date:
+            conditions.append("UNIX_TIMESTAMP(send_time) <= %s")
+            params.append(int(end_date))
+        if msg_pattern:
+            conditions.append("msg REGEXP %s")
+            params.append(msg_pattern)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
 
-    print(query, params)
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
+        print(query, params)
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
-    result = [
-        {
-            "username": row[1],
-            "user_alias": row[2],
-            "message": row[3],
-            "attribute": row[4] if row[4] else "",
-            "send_time": row[5].timestamp(),
-            "players": row[6],
-            "tps": row[7],
-            "tps_1": row[8],
-            "tps_5": row[9],
-            "tps_15": row[10],
-        }
-        for row in rows
-    ]
+        result = [
+            {
+                "username": row[1],
+                "user_alias": row[2],
+                "message": row[3],
+                "attribute": row[4] if row[4] else "",
+                "send_time": row[5].timestamp(),
+                "players": row[6],
+                "tps": row[7],
+                "tps_1": row[8],
+                "tps_5": row[9],
+                "tps_15": row[10],
+            }
+            for row in rows
+        ]
 
-    return jsonify({"status": "ok", "chats": result}), 200
+        return jsonify({"status": "ok", "chats": result}), 200
+    except Exception as e:
+        print(f"查询数据时发生错误: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/getid")
 def getid():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT username FROM messages;")
-    usernames = [row[0] for row in cursor.fetchall()]
-    if "系统" in usernames:
-        usernames.remove("系统")
-    usernames = list(set(usernames))
-    return {"status": "ok", "ids": usernames}, 200
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM messages;")
+        usernames = [row[0] for row in cursor.fetchall()]
+        if "系统" in usernames:
+            usernames.remove("系统")
+        usernames = list(set(usernames))
+        return {"status": "ok", "ids": usernames}, 200
+    except Exception as e:
+        print(f"获取用户名时发生错误: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 def process_players(data):
